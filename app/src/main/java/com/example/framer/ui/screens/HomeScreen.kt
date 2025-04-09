@@ -18,6 +18,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -51,6 +54,11 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import com.example.framer.R
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.material3.ExperimentalMaterial3Api
 
 // Data class to represent aspect ratios
 data class AspectRatio(val name: String, val ratio: Float)
@@ -58,6 +66,7 @@ data class AspectRatio(val name: String, val ratio: Float)
 // Data class to represent quality options
 data class QualityOption(val name: String, val quality: Int)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
@@ -276,7 +285,7 @@ fun HomeScreen() {
                         .width(width.dp)
                         .height(height.dp)
                         .align(Alignment.Center)
-                        .border(1.dp, MaterialTheme.colorScheme.surfaceVariant)
+                        .border(1.dp, Yellow)
                         .background(frameColor)
                         .padding(frameThickness)
                 ) {
@@ -294,12 +303,20 @@ fun HomeScreen() {
                                 .clickable { imagePicker.launch("image/*") },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Select image",
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .background(Yellow, CircleShape)
+                                    .padding(8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Select image",
+                                    modifier = Modifier.size(32.dp),
+                                    tint = Black
+                                )
+                            }
                         }
                     }
                 }
@@ -406,11 +423,36 @@ fun HomeScreen() {
                     .padding(bottom = 12.dp)
             )
             
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+            var showColorPicker by remember { mutableStateOf(false) }
+            
+            // Cache the color list to prevent recreation on scroll
+            val colorList = remember {
+                listOf(
+                    Pair(White, "White"),
+                    Pair(Black, "Black"),
+                    Pair(Blue, "Blue"),
+                    Pair(Yellow, "Yellow"),
+                    Pair(Red, "Red"),
+                    Pair(Green, "Green"),
+                    Pair(Purple, "Purple"),
+                    Pair(Pink, "Pink"),
+                    Pair(Orange, "Orange"),
+                    Pair(Teal, "Teal"),
+                    Pair(Indigo, "Indigo")
+                )
+            }
+            
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                listOf(White, Black, Blue, Yellow, Red).forEach { color ->
+                items(
+                    items = colorList,
+                    key = { it.first.toArgb() } // Use color as key for better performance
+                ) { (color, name) ->
                     Box(
                         modifier = Modifier
                             .size(48.dp)
@@ -424,6 +466,256 @@ fun HomeScreen() {
                             )
                             .clickable { frameColor = color }
                     )
+                }
+                
+                item(key = "custom") {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(White, CircleShape)
+                            .border(
+                                width = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                                shape = CircleShape
+                            )
+                            .clickable { showColorPicker = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Custom color",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+
+            if (showColorPicker) {
+                Dialog(onDismissRequest = { showColorPicker = false }) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight(),
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            Text(
+                                "CUSTOM COLOR",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Color preview
+                            var selectedColor by remember { mutableStateOf(frameColor) }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp)
+                                    .background(selectedColor, RoundedCornerShape(16.dp))
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Hex input
+                            var hexInput by remember { mutableStateOf(selectedColor.toHex()) }
+                            var isHexValid by remember { mutableStateOf(true) }
+                            
+                            OutlinedTextField(
+                                value = hexInput,
+                                onValueChange = { newValue ->
+                                    hexInput = newValue.uppercase()
+                                    if (newValue.length == 7 && newValue.startsWith("#")) {
+                                        try {
+                                            val color = Color(android.graphics.Color.parseColor(newValue))
+                                            selectedColor = color
+                                            isHexValid = true
+                                        } catch (e: Exception) {
+                                            isHexValid = false
+                                        }
+                                    } else {
+                                        isHexValid = false
+                                    }
+                                },
+                                label = { Text("HEX COLOR") },
+                                isError = !isHexValid,
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Yellow,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                                )
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // HSL Sliders
+                            var hue by remember { mutableStateOf(0f) }
+                            var saturation by remember { mutableStateOf(1f) }
+                            var lightness by remember { mutableStateOf(0.5f) }
+                            
+                            // Hue Slider
+                            Text(
+                                "HUE",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color.Red,
+                                                Color.Yellow,
+                                                Color.Green,
+                                                Color.Cyan,
+                                                Color.Blue,
+                                                Color.Magenta,
+                                                Color.Red
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Slider(
+                                    value = hue,
+                                    onValueChange = { 
+                                        hue = it
+                                        selectedColor = Color.hsl(hue * 360f, saturation, lightness)
+                                        hexInput = selectedColor.toHex()
+                                    },
+                                    valueRange = 0f..1f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color.Transparent,
+                                        inactiveTrackColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Saturation Slider
+                            Text(
+                                "SATURATION",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color.hsl(hue * 360f, 0f, lightness),
+                                                Color.hsl(hue * 360f, 1f, lightness)
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Slider(
+                                    value = saturation,
+                                    onValueChange = { 
+                                        saturation = it
+                                        selectedColor = Color.hsl(hue * 360f, saturation, lightness)
+                                        hexInput = selectedColor.toHex()
+                                    },
+                                    valueRange = 0f..1f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color.Transparent,
+                                        inactiveTrackColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Lightness Slider
+                            Text(
+                                "LIGHTNESS",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color.Black,
+                                                Color.hsl(hue * 360f, saturation, 0.5f),
+                                                Color.White
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Slider(
+                                    value = lightness,
+                                    onValueChange = { 
+                                        lightness = it
+                                        selectedColor = Color.hsl(hue * 360f, saturation, lightness)
+                                        hexInput = selectedColor.toHex()
+                                    },
+                                    valueRange = 0f..1f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color.Transparent,
+                                        inactiveTrackColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                Button(
+                                    onClick = { 
+                                        frameColor = selectedColor
+                                        showColorPicker = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    ),
+                                    shape = RoundedCornerShape(24.dp)
+                                ) {
+                                    Text("APPLY")
+                                }
+                                
+                                Button(
+                                    onClick = { showColorPicker = false },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    shape = RoundedCornerShape(24.dp)
+                                ) {
+                                    Text("CANCEL")
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -648,4 +940,13 @@ private suspend fun saveImage(
             }
         }
     }
+}
+
+// Add this extension function at the end of the file
+fun Color.toHex(): String {
+    val alpha = (alpha * 255).toInt()
+    val red = (red * 255).toInt()
+    val green = (green * 255).toInt()
+    val blue = (blue * 255).toInt()
+    return String.format("#%02X%02X%02X%02X", alpha, red, green, blue)
 } 
