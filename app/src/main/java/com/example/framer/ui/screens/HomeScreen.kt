@@ -27,17 +27,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -48,240 +44,23 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.example.framer.R
+import com.example.framer.data.model.AspectRatio
+import com.example.framer.data.model.HSLColor
+import com.example.framer.data.model.QualityOption
+import com.example.framer.data.model.toHSLColor
+import com.example.framer.ui.components.*
 import com.example.framer.ui.theme.*
+import com.example.framer.utils.saveImage
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// Data class to represent aspect ratios
-data class AspectRatio(val name: String, val ratio: Float)
-
-// Data class to represent quality options
-data class QualityOption(val name: String, val quality: Int)
-
-// HSL Color class and conversion functions
-data class HSLColor(
-        val hue: Float, // 0-360
-        val saturation: Float, // 0-1
-        val lightness: Float // 0-1
-) {
-        fun toColor(): Color {
-                val c = (1f - abs(2f * lightness - 1f)) * saturation
-                val x = c * (1f - abs((hue / 60f) % 2f - 1f))
-                val m = lightness - c / 2f
-
-                val (r1, g1, b1) =
-                        when {
-                                hue < 60f -> Triple(c, x, 0f)
-                                hue < 120f -> Triple(x, c, 0f)
-                                hue < 180f -> Triple(0f, c, x)
-                                hue < 240f -> Triple(0f, x, c)
-                                hue < 300f -> Triple(x, 0f, c)
-                                else -> Triple(c, 0f, x)
-                        }
-
-                return Color(red = r1 + m, green = g1 + m, blue = b1 + m)
-        }
-}
-
-fun Color.toHSLColor(): HSLColor {
-        val r = red
-        val g = green
-        val b = blue
-
-        val max = max(max(r, g), b)
-        val min = min(min(r, g), b)
-        val d = max - min
-
-        val h =
-                when {
-                        d == 0f -> 0f
-                        max == r -> 60f * ((g - b) / d + 6f) % 360f
-                        max == g -> 60f * ((b - r) / d + 2f)
-                        else -> 60f * ((r - g) / d + 4f)
-                }
-
-        val l = (max + min) / 2f
-        val s =
-                when {
-                        l == 0f || l == 1f -> 0f
-                        else -> d / (1f - abs(2f * l - 1f))
-                }
-
-        return HSLColor(h, s, l)
-}
-
-@Composable
-private fun ColorPickerItem(color: Color, isSelected: Boolean, onClick: () -> Unit) {
-        Box(
-                modifier =
-                        Modifier.size(48.dp)
-                                .background(color, CircleShape)
-                                .border(
-                                        width = 2.dp,
-                                        color =
-                                                if (isSelected) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.surface,
-                                        shape = CircleShape
-                                )
-                                .clickable(onClick = onClick)
-        )
-}
-
-@Composable
-private fun AspectRatioItem(ratio: AspectRatio, color: Color, onClick: () -> Unit) {
-        Box(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .padding(4.dp)
-                                .background(color, RoundedCornerShape(16.dp))
-                                .clickable(onClick = onClick)
-                                .padding(12.dp),
-                contentAlignment = Alignment.Center
-        ) {
-                Text(
-                        ratio.name.uppercase(),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (color == Yellow) Black else White
-                )
-        }
-}
-
-@Composable
-private fun HueSlider(value: Float, onValueChange: (Float) -> Unit, currentColor: Color) {
-        Box(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .height(32.dp)
-                                .background(
-                                        brush =
-                                                Brush.horizontalGradient(
-                                                        colors =
-                                                                listOf(
-                                                                        Color(1f, 0f, 0f), // Red
-                                                                        Color(1f, 1f, 0f), // Yellow
-                                                                        Color(0f, 1f, 0f), // Green
-                                                                        Color(0f, 1f, 1f), // Cyan
-                                                                        Color(0f, 0f, 1f), // Blue
-                                                                        Color(
-                                                                                1f,
-                                                                                0f,
-                                                                                1f
-                                                                        ), // Magenta
-                                                                        Color(
-                                                                                1f,
-                                                                                0f,
-                                                                                0f
-                                                                        ) // Red again
-                                                                )
-                                                ),
-                                        shape = RoundedCornerShape(16.dp)
-                                )
-                                .padding(horizontal = 4.dp)
-        ) {
-                Slider(
-                        value = value,
-                        onValueChange = onValueChange,
-                        valueRange = 0f..360f,
-                        colors =
-                                SliderDefaults.colors(
-                                        thumbColor = currentColor,
-                                        activeTrackColor = Color.Transparent,
-                                        inactiveTrackColor = Color.Transparent
-                                ),
-                        modifier = Modifier.padding(vertical = 0.dp)
-                )
-        }
-}
-
-@Composable
-private fun SaturationSlider(
-        value: Float,
-        onValueChange: (Float) -> Unit,
-        currentColor: Color,
-        hue: Float
-) {
-        val gray = Color(0.5f, 0.5f, 0.5f)
-        val fullColor = HSLColor(hue, 1f, 0.5f).toColor()
-
-        Box(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .height(32.dp)
-                                .background(
-                                        brush =
-                                                Brush.horizontalGradient(
-                                                        colors = listOf(gray, fullColor)
-                                                ),
-                                        shape = RoundedCornerShape(16.dp)
-                                )
-                                .padding(horizontal = 4.dp)
-        ) {
-                Slider(
-                        value = value,
-                        onValueChange = onValueChange,
-                        valueRange = 0f..1f,
-                        colors =
-                                SliderDefaults.colors(
-                                        thumbColor = currentColor,
-                                        activeTrackColor = Color.Transparent,
-                                        inactiveTrackColor = Color.Transparent
-                                ),
-                        modifier = Modifier.padding(vertical = 0.dp)
-                )
-        }
-}
-
-@Composable
-private fun LightnessSlider(
-        value: Float,
-        onValueChange: (Float) -> Unit,
-        currentColor: Color,
-        hue: Float,
-        saturation: Float
-) {
-        val black = Color(0f, 0f, 0f)
-        val fullColor = HSLColor(hue, saturation, 0.5f).toColor()
-        val white = Color(1f, 1f, 1f)
-
-        Box(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .height(32.dp)
-                                .background(
-                                        brush =
-                                                Brush.horizontalGradient(
-                                                        colors = listOf(black, fullColor, white)
-                                                ),
-                                        shape = RoundedCornerShape(16.dp)
-                                )
-                                .padding(horizontal = 4.dp)
-        ) {
-                Slider(
-                        value = value,
-                        onValueChange = onValueChange,
-                        valueRange = 0f..1f,
-                        colors =
-                                SliderDefaults.colors(
-                                        thumbColor = currentColor,
-                                        activeTrackColor = Color.Transparent,
-                                        inactiveTrackColor = Color.Transparent
-                                ),
-                        modifier = Modifier.padding(vertical = 0.dp)
-                )
-        }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen() {
         val context = LocalContext.current
@@ -424,250 +203,62 @@ fun HomeScreen() {
         // Add HSL state
         var hslColor by remember { mutableStateOf<HSLColor>(frameColor.toHSLColor()) }
 
-        // Quality selection dialog
+        // Quality Dialog
         if (showQualityDialog) {
-                Dialog(onDismissRequest = { showQualityDialog = false }) {
-                        Surface(
-                                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                                shape = RoundedCornerShape(24.dp),
-                                color = Black
-                        ) {
-                                Column(modifier = Modifier.padding(24.dp)) {
-                                        Text(
-                                                "SELECT QUALITY",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = White
-                                        )
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        qualityOptions.forEach { option ->
-                                                Button(
-                                                        onClick = {
-                                                                showQualityDialog = false
-                                                                if (selectedImageUri != null) {
-                                                                        scope.launch {
-                                                                                saveImage(
-                                                                                        context,
-                                                                                        selectedImageUri!!,
-                                                                                        frameColor,
-                                                                                        frameThickness,
-                                                                                        selectedAspectRatio,
-                                                                                        option.quality
-                                                                                )
-                                                                        }
-                                                                } else {
-                                                                        Toast.makeText(
-                                                                                        context,
-                                                                                        "Please select an image first",
-                                                                                        Toast.LENGTH_SHORT
-                                                                                )
-                                                                                .show()
-                                                                }
-                                                        },
-                                                        modifier =
-                                                                Modifier.fillMaxWidth()
-                                                                        .padding(vertical = 4.dp),
-                                                        colors =
-                                                                ButtonDefaults.buttonColors(
-                                                                        containerColor = Blue,
-                                                                        contentColor = White
-                                                                ),
-                                                        shape = RoundedCornerShape(24.dp)
-                                                ) { Text(option.name, color = White) }
+                QualityDialog(
+                        onDismiss = { showQualityDialog = false },
+                        onQualitySelected = { quality ->
+                                if (selectedImageUri != null) {
+                                        scope.launch {
+                                                saveImage(
+                                                        context,
+                                                        selectedImageUri!!,
+                                                        frameColor,
+                                                        frameThickness,
+                                                        selectedAspectRatio,
+                                                        quality
+                                                )
                                         }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        TextButton(
-                                                onClick = { showQualityDialog = false },
-                                                modifier = Modifier.align(Alignment.End)
-                                        ) { Text("CANCEL", color = White) }
+                                } else {
+                                        Toast.makeText(
+                                                        context,
+                                                        "Please select an image first",
+                                                        Toast.LENGTH_SHORT
+                                                )
+                                                .show()
                                 }
-                        }
-                }
+                        },
+                        qualityOptions = qualityOptions
+                )
         }
 
         // Color Picker Dialog
         if (showColorPicker) {
-                Dialog(onDismissRequest = { showColorPicker = false }) {
-                        Surface(
-                                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                                shape = RoundedCornerShape(24.dp),
-                                color = White
-                        ) {
-                                Column(
-                                        modifier =
-                                                Modifier.fillMaxWidth()
-                                                        .border(
-                                                                2.dp,
-                                                                Yellow,
-                                                                RoundedCornerShape(24.dp)
-                                                        )
-                                                        .padding(24.dp)
-                                ) {
-                                        Text(
-                                                "SELECT COLOR",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = Black
-                                        )
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        // HSL Sliders with visual feedback
-                                        Text("Hue", color = Black)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        HueSlider(
-                                                value = hslColor.hue,
-                                                onValueChange = { newValue ->
-                                                        hslColor = hslColor.copy(hue = newValue)
-                                                        frameColor = hslColor.toColor()
-                                                },
-                                                currentColor = frameColor
-                                        )
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text("Saturation", color = Black)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        SaturationSlider(
-                                                value = hslColor.saturation,
-                                                onValueChange = { newValue ->
-                                                        hslColor =
-                                                                hslColor.copy(saturation = newValue)
-                                                        frameColor = hslColor.toColor()
-                                                },
-                                                currentColor = frameColor,
-                                                hue = hslColor.hue
-                                        )
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text("Lightness", color = Black)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        LightnessSlider(
-                                                value = hslColor.lightness,
-                                                onValueChange = { newValue ->
-                                                        hslColor =
-                                                                hslColor.copy(lightness = newValue)
-                                                        frameColor = hslColor.toColor()
-                                                },
-                                                currentColor = frameColor,
-                                                hue = hslColor.hue,
-                                                saturation = hslColor.saturation
-                                        )
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        // Preview box
-                                        Box(
-                                                modifier =
-                                                        Modifier.fillMaxWidth()
-                                                                .height(48.dp)
-                                                                .background(frameColor)
-                                                                .border(1.dp, Black)
-                                        )
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.End
-                                        ) {
-                                                TextButton(onClick = { showColorPicker = false }) {
-                                                        Text("CANCEL", color = Black)
-                                                }
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                TextButton(onClick = { showColorPicker = false }) {
-                                                        Text("OK", color = Black)
-                                                }
-                                        }
-                                }
-                        }
-                }
+                ColorPickerDialog(
+                        onDismiss = { showColorPicker = false },
+                        currentColor = frameColor,
+                        onColorChange = { frameColor = it },
+                        hslColor = hslColor,
+                        onHSLChange = { newHSL -> hslColor = newHSL }
+                )
         }
 
         // Aspect Ratio Dialog
         if (ratioExpanded) {
-                Dialog(onDismissRequest = { ratioExpanded = false }) {
-                        Surface(
-                                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                                shape = RoundedCornerShape(24.dp),
-                                color = White
-                        ) {
-                                Column(
-                                        modifier =
-                                                Modifier.fillMaxWidth()
-                                                        .border(
-                                                                2.dp,
-                                                                Yellow,
-                                                                RoundedCornerShape(24.dp)
-                                                        )
-                                                        .padding(24.dp)
-                                ) {
-                                        Text(
-                                                "SELECT ASPECT RATIO",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = Black
-                                        )
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        aspectRatios.forEachIndexed { index, ratio ->
-                                                val pillColor =
-                                                        when (index % 3) {
-                                                                0 -> Red
-                                                                1 -> Yellow
-                                                                else -> Blue
-                                                        }
-
-                                                Box(
-                                                        modifier =
-                                                                Modifier.fillMaxWidth()
-                                                                        .padding(vertical = 4.dp)
-                                                                        .background(
-                                                                                pillColor,
-                                                                                RoundedCornerShape(
-                                                                                        16.dp
-                                                                                )
-                                                                        )
-                                                                        .clickable {
-                                                                                selectedAspectRatio =
-                                                                                        ratio
-                                                                                selectedAspectRatioColor =
-                                                                                        pillColor
-                                                                                ratioExpanded =
-                                                                                        false
-                                                                        }
-                                                                        .padding(
-                                                                                vertical = 12.dp,
-                                                                                horizontal = 16.dp
-                                                                        )
-                                                ) {
-                                                        Text(
-                                                                ratio.name.uppercase(),
-                                                                style =
-                                                                        MaterialTheme.typography
-                                                                                .labelLarge,
-                                                                color =
-                                                                        if (pillColor == Yellow)
-                                                                                Black
-                                                                        else White,
-                                                                modifier =
-                                                                        Modifier.align(
-                                                                                Alignment.Center
-                                                                        )
-                                                        )
-                                                }
+                AspectRatioDialog(
+                        onDismiss = { ratioExpanded = false },
+                        onRatioSelected = { ratio ->
+                                selectedAspectRatio = ratio
+                                selectedAspectRatioColor =
+                                        when (aspectRatios.indexOf(ratio) % 3) {
+                                                0 -> Red
+                                                1 -> Yellow
+                                                else -> Blue
                                         }
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.End
-                                        ) {
-                                                TextButton(onClick = { ratioExpanded = false }) {
-                                                        Text("CANCEL", color = Black)
-                                                }
-                                        }
-                                }
-                        }
-                }
+                        },
+                        aspectRatios = aspectRatios,
+                        selectedRatio = selectedAspectRatio
+                )
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -1004,161 +595,15 @@ fun HomeScreen() {
                 }
 
                 // Custom Drawer
-                if (showDrawer) {
-                        Box(
-                                modifier =
-                                        Modifier.fillMaxSize()
-                                                .clickable { showDrawer = false }
-                                                .background(
-                                                        MaterialTheme.colorScheme.scrim.copy(
-                                                                alpha = 0.32f * (1f - drawerOffset)
-                                                        )
-                                                )
-                        ) {
-                                Box(
-                                        modifier =
-                                                Modifier.align(Alignment.CenterEnd)
-                                                        .width(drawerWidth)
-                                                        .fillMaxHeight()
-                                                        .background(
-                                                                MaterialTheme.colorScheme.background
-                                                                        .copy(
-                                                                                alpha =
-                                                                                        1f -
-                                                                                                drawerOffset
-                                                                        )
-                                                        )
-                                                        .offset(
-                                                                x =
-                                                                        (drawerWidth.value *
-                                                                                        drawerOffset)
-                                                                                .dp
-                                                        )
-                                                        .clickable(enabled = false) {
-                                                        } // Prevent click propagation
-                                ) {
-                                        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                                                // Close Button
-                                                Row(
-                                                        modifier =
-                                                                Modifier.fillMaxWidth()
-                                                                        .padding(bottom = 16.dp),
-                                                        horizontalArrangement = Arrangement.End
-                                                ) {
-                                                        IconButton(
-                                                                onClick = { showDrawer = false }
-                                                        ) {
-                                                                Icon(
-                                                                        imageVector =
-                                                                                Icons.Default.Close,
-                                                                        contentDescription =
-                                                                                "Close drawer",
-                                                                        tint =
-                                                                                MaterialTheme
-                                                                                        .colorScheme
-                                                                                        .onBackground
-                                                                                        .copy(
-                                                                                                alpha =
-                                                                                                        1f -
-                                                                                                                drawerOffset
-                                                                                        )
-                                                                )
-                                                        }
-                                                }
-
-                                                // Navigation Items
-                                                Box(
-                                                        modifier =
-                                                                Modifier.fillMaxWidth()
-                                                                        .padding(horizontal = 12.dp)
-                                                                        .background(
-                                                                                Red.copy(
-                                                                                        alpha =
-                                                                                                1f -
-                                                                                                        drawerOffset
-                                                                                ),
-                                                                                RoundedCornerShape(
-                                                                                        24.dp
-                                                                                )
-                                                                        )
-                                                                        .clickable {
-                                                                                showDrawer = false
-                                                                                showAboutScreen =
-                                                                                        true
-                                                                        }
-                                                                        .padding(
-                                                                                vertical = 12.dp,
-                                                                                horizontal = 16.dp
-                                                                        )
-                                                ) {
-                                                        Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement =
-                                                                        Arrangement.spacedBy(12.dp),
-                                                                verticalAlignment =
-                                                                        Alignment.CenterVertically
-                                                        ) {
-                                                                Icon(
-                                                                        imageVector =
-                                                                                Icons.Default.Info,
-                                                                        contentDescription =
-                                                                                "About",
-                                                                        tint =
-                                                                                White.copy(
-                                                                                        alpha =
-                                                                                                1f -
-                                                                                                        drawerOffset
-                                                                                )
-                                                                )
-                                                                Text(
-                                                                        "About",
-                                                                        color =
-                                                                                White.copy(
-                                                                                        alpha =
-                                                                                                1f -
-                                                                                                        drawerOffset
-                                                                                ),
-                                                                        style =
-                                                                                MaterialTheme
-                                                                                        .typography
-                                                                                        .labelLarge
-                                                                )
-                                                        }
-                                                }
-
-                                                // Spacer to push logo to bottom
-                                                Spacer(modifier = Modifier.weight(1f))
-
-                                                // Logo at bottom
-                                                Box(
-                                                        modifier =
-                                                                Modifier.fillMaxWidth()
-                                                                        .padding(bottom = 16.dp),
-                                                        contentAlignment = Alignment.Center
-                                                ) {
-                                                        Box(modifier = Modifier.size(64.dp)) {
-                                                                Image(
-                                                                        painter =
-                                                                                painterResource(
-                                                                                        id =
-                                                                                                R.drawable
-                                                                                                        .framer_logo
-                                                                                ),
-                                                                        contentDescription =
-                                                                                "Framer Logo",
-                                                                        modifier =
-                                                                                Modifier.fillMaxSize()
-                                                                                        .alpha(
-                                                                                                1f -
-                                                                                                        drawerOffset
-                                                                                        )
-                                                                )
-                                                        }
-                                                }
-                                        }
-                                }
-                        }
-                }
+                CustomDrawer(
+                        showDrawer = showDrawer,
+                        onDismiss = { showDrawer = false },
+                        onAboutClick = {
+                                showDrawer = false
+                                showAboutScreen = true
+                        },
+                        drawerWidth = drawerWidth
+                )
         }
 
         // Show About Screen
@@ -1374,63 +819,3 @@ fun Color.toHex(): String {
         val blue = (blue * 255).toInt()
         return String.format("#%02X%02X%02X%02X", alpha, red, green, blue)
 }
-
-// HSL Color conversion functions
-fun Color.toHSL(): Triple<Float, Float, Float> {
-        val r = red
-        val g = green
-        val b = blue
-
-        val max = max(max(r, g), b)
-        val min = min(min(r, g), b)
-        val d = max - min
-
-        val h =
-                when {
-                        d == 0f -> 0f
-                        max == r -> 60f * ((g - b) / d + 6f) % 360f
-                        max == g -> 60f * ((b - r) / d + 2f)
-                        else -> 60f * ((r - g) / d + 4f)
-                }
-
-        val l = (max + min) / 2f
-        val s =
-                when {
-                        l == 0f || l == 1f -> 0f
-                        else -> d / (1f - abs(2f * l - 1f))
-                }
-
-        return Triple(h, s, l)
-}
-
-fun Color.copy(hue: Float? = null, saturation: Float? = null, lightness: Float? = null): Color {
-        val (h, s, l) = toHSL()
-        val newH = hue ?: h
-        val newS = saturation ?: s
-        val newL = lightness ?: l
-
-        val c = (1f - abs(2f * newL - 1f)) * newS
-        val x = c * (1f - abs((newH / 60f) % 2f - 1f))
-        val m = newL - c / 2f
-
-        val (r1, g1, b1) =
-                when {
-                        newH < 60f -> Triple(c, x, 0f)
-                        newH < 120f -> Triple(x, c, 0f)
-                        newH < 180f -> Triple(0f, c, x)
-                        newH < 240f -> Triple(0f, x, c)
-                        newH < 300f -> Triple(x, 0f, c)
-                        else -> Triple(c, 0f, x)
-                }
-
-        return Color(red = r1 + m, green = g1 + m, blue = b1 + m, alpha = alpha)
-}
-
-val Color.hue: Float
-        get() = toHSL().first
-
-val Color.saturation: Float
-        get() = toHSL().second
-
-val Color.lightness: Float
-        get() = toHSL().third

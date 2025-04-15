@@ -29,7 +29,7 @@ data class HSLColor(
     }
 }
 
-fun Color.toHSLColor(): HSLColor {
+public fun Color.toHSLColor(): HSLColor {
     val r = red
     val g = green
     val b = blue
@@ -55,3 +55,39 @@ fun Color.toHSLColor(): HSLColor {
 
     return HSLColor(h, s, l)
 }
+
+public fun Color.copy(
+        hue: Float? = null,
+        saturation: Float? = null,
+        lightness: Float? = null
+): Color {
+    val (h, s, l) = toHSLColor()
+    val newH = hue ?: h
+    val newS = saturation ?: s
+    val newL = lightness ?: l
+
+    val c = (1f - abs(2f * newL - 1f)) * newS
+    val x = c * (1f - abs((newH / 60f) % 2f - 1f))
+    val m = newL - c / 2f
+
+    val (r1, g1, b1) =
+            when {
+                newH < 60f -> Triple(c, x, 0f)
+                newH < 120f -> Triple(x, c, 0f)
+                newH < 180f -> Triple(0f, c, x)
+                newH < 240f -> Triple(0f, x, c)
+                newH < 300f -> Triple(x, 0f, c)
+                else -> Triple(c, 0f, x)
+            }
+
+    return Color(red = r1 + m, green = g1 + m, blue = b1 + m, alpha = alpha)
+}
+
+public val Color.hue: Float
+    get() = toHSLColor().hue
+
+public val Color.saturation: Float
+    get() = toHSLColor().saturation
+
+public val Color.lightness: Float
+    get() = toHSLColor().lightness
