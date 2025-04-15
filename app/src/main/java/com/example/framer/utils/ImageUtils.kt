@@ -40,8 +40,6 @@ suspend fun saveImage(
                             ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
                                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
                                 decoder.isMutableRequired = true
-                                // Add sampling to reduce memory usage
-                                decoder.setTargetSampleSize(2)
                             }
                         } else {
                             @Suppress("DEPRECATION")
